@@ -2,7 +2,17 @@
 
 This is a Vietnamese pharmacy management system built with React, Express, and Supabase PostgreSQL. The application provides comprehensive functionality for managing medicine inventory, prescriptions, and patient records. It features a modern UI with Shadcn/UI components, TanStack Query for data fetching, and real-time prescription processing capabilities.
 
-## Recent Changes (Aug 20-21, 2025)
+## Recent Changes (Aug 30, 2025)
+- ✅ **MAJOR Excel Export Feature**: Professional Excel reports for low-stock medicines
+- ✅ Accurate filtering logic: tồn kho <= đặt hàng (matches UI "Sắp hết" badge)
+- ✅ Column structure synchronized with UI table: STT, Tên thuốc, Đơn vị, Tồn kho, Giá nhập, Giá bán, Đặt hàng, Đường dùng, Hạn sử dụng
+- ✅ API endpoint /api/medicines/low-stock returns 12 low-stock medicines
+- ✅ Interactive statistics board - click number to export Excel
+- ✅ Professional Excel formatting with merge cells, headers, footer signatures
+- ✅ Real-time data from Supabase database (102 total medicines)
+- ✅ Ready for Git push to new repository: PharmaCare2.git
+
+## Previous Changes (Aug 20-21, 2025)
 - ✅ Successfully migrated to real Supabase database with table `thuoc`
 - ✅ Fixed medicine creation logic - can now add new medicines via API and UI
 - ✅ Updated schema to match SQL table structure (numeric fields for pricing)

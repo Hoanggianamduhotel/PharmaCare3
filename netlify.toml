@@ -39,6 +39,11 @@
   to = "/.netlify/functions/patients"
   status = 200
 
+[[redirects]]
+  from = "/api/medicines/low-stock"
+  to = "/.netlify/functions/medicines-low-stock"
+  status = 200
+
 # SPA fallback for client-side routing
 [[redirects]]
   from = "/*"

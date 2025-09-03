@@ -76,6 +76,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // API endpoint để lấy thuốc sắp hết hàng cho xuất Excel (phải đặt trước :id route)
+  app.get("/api/medicines/low-stock", async (req, res) => {
+    try {
+      const thuoc = await storage.getAllThuoc();
+      // Lọc thuốc sắp hết: tồn kho <= đặt hàng
+      const lowStockThuoc = thuoc
+        .filter(t => {
+          const tonKho = Number(t.so_luong_ton || 0);
+          const datHang = Number(t.so_luong_dat_hang || 0);
+          return tonKho <= datHang; // Logic giống như trong MedicineInventory.tsx
+        })
+        .map(t => ({
+          id: t.id,
+          ten: t.ten_thuoc,
+          donvi: t.don_vi || "Viên",
+          tonkho: Number(t.so_luong_ton || 0),
+          gianhap: Number(t.gia_nhap || 0),
+          giaban: Number(t.gia_ban || 0),
+          dathang: Number(t.so_luong_dat_hang || 0),
+          duongdung: t.duong_dung || "Uống",
+          hansudung: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : "N/A",
+          nhasanxuat: t.phan_loai || "Chưa cập nhật"
+        }));
+      
+      res.json(lowStockThuoc);
+    } catch (error) {
+      console.error("Error fetching low stock medicines:", error);
+      res.status(500).json({ message: "Lỗi khi lấy danh sách thuốc sắp hết" });
+    }
+  });
+
   app.get("/api/medicines/:id", async (req, res) => {
     try {
       const medicine = await storage.getMedicine(req.params.id);
@@ -154,7 +185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const thuoc = await storage.getAllThuoc();
       
       const totalMedicines = thuoc.length;
-      const lowStockMedicines = thuoc.filter(t => Number(t.so_luong_ton || 0) <= 10).length;
+      const lowStockMedicines = thuoc.filter(t => Number(t.so_luong_ton || 0) <= Number(t.so_luong_dat_hang || 0)).length;
       const pendingPrescriptions = 0; // No prescriptions in simplified schema yet
       const totalValue = 0; // No pricing in simplified schema yet
       

@@ -6,7 +6,7 @@
 Your GitHub token has been exposed and must be revoked immediately:
 
 1. Go to: https://github.com/settings/tokens
-2. Find token `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`
+2. Find the exposed token (starts with ghp_...)
 3. Click "Delete" or "Revoke"
 4. Create a new token with the same permissions
 

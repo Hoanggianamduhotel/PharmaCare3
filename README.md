@@ -1,6 +1,13 @@
-# PharmaCare - Vietnamese Pharmacy Management System
+# PharmaCare v3.0 - Vietnamese Pharmacy Management System
 
 A comprehensive pharmacy management system built with modern web technologies, designed specifically for Vietnamese pharmaceutical practices.
+
+## 🆕 Version 3.0 Features
+- **Professional Excel Export**: Generate detailed low-stock medicine reports with proper formatting
+- **Smart Filtering**: Automatically detect medicines where tồn kho ≤ đặt hàng  
+- **Interactive Dashboard**: Click statistics numbers to export reports
+- **Real-time Data**: 105+ medicines in production database
+- **Complete CRUD**: Full medicine management with Supabase integration
 
 ## 🏥 Features
 
