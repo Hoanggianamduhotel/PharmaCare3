@@ -10,7 +10,8 @@ This is a Vietnamese pharmacy management system built with React, Express, and S
 - ✅ Interactive statistics board - click number to export Excel
 - ✅ Professional Excel formatting with merge cells, headers, footer signatures
 - ✅ Real-time data from Supabase database (102 total medicines)
-- ✅ Ready for Git push to new repository: PharmaCare2.git
+- ✅ Ready for Git push to new repository: PharmaCare3.git
+- ✅ Git authentication setup guide for GitHub Personal Access Token
 
 ## Previous Changes (Aug 20-21, 2025)
 - ✅ Successfully migrated to real Supabase database with table `thuoc`
