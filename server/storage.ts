@@ -7,7 +7,9 @@ import {
   type Khambenh,
   type InsertKhambenh,
   type Toathuoc,
-  type InsertToathuoc
+  type InsertToathuoc,
+  type Patient,
+  type InsertPatient
 } from "@shared/schema";
 
 export interface IStorage {
@@ -23,10 +25,16 @@ export interface IStorage {
   createThuoc(thuoc: InsertThuoc): Promise<Thuoc>;
   updateThuoc(id: string, thuoc: Partial<InsertThuoc>): Promise<Thuoc | undefined>;
   deleteThuoc(id: string): Promise<boolean>;
+
+  // Bệnh nhân & Khám bệnh (Bổ sung để chạy được tính năng đơn thuốc)
+  createPatient(patient: InsertPatient): Promise<Patient>;
+  getPatientById(id: string): Promise<Patient | undefined>;
+  createKhambenh(data: InsertKhambenh): Promise<Khambenh>;
+  createToathuoc(data: InsertToathuoc[]): Promise<Toathuoc[]>;
 }
 
 export class SupabaseStorage implements IStorage {
-  // USER METHODS
+  // --- USER METHODS ---
   async getUser(id: string) {
     const { data } = await supabase.from('users').select('*').eq('id', id).single();
     return data || undefined;
@@ -43,16 +51,13 @@ export class SupabaseStorage implements IStorage {
     return data;
   }
 
-  // THUOC METHODS (Khớp với Schema và Database)
+  // --- THUOC METHODS ---
   async getAllThuoc(): Promise<Thuoc[]> {
     const { data, error } = await supabase
       .from('thuoc')
       .select('*')
-      .order('ten_thuoc', { ascending: true });
-    if (error) {
-      console.error("Lỗi lấy danh sách thuốc:", error.message);
-      return [];
-    }
+      .order('created_at', { ascending: false }); // Ưu tiên thuốc mới nhập lên đầu
+    if (error) return [];
     return data || [];
   }
 
@@ -72,17 +77,8 @@ export class SupabaseStorage implements IStorage {
   }
 
   async createThuoc(thuoc: InsertThuoc): Promise<Thuoc> {
-    // Đảm bảo các trường numeric được gửi dưới dạng string/number đúng ý Supabase
-    const { data, error } = await supabase
-      .from('thuoc')
-      .insert([thuoc])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error("Lỗi Supabase khi INSERT:", error.message);
-      throw new Error(error.message);
-    }
+    const { data, error } = await supabase.from('thuoc').insert(thuoc).select().single();
+    if (error) throw error;
     return data;
   }
 
@@ -93,11 +89,7 @@ export class SupabaseStorage implements IStorage {
       .eq('id', id)
       .select()
       .single();
-    
-    if (error) {
-      console.error("Lỗi Supabase khi UPDATE:", error.message);
-      throw new Error(error.message);
-    }
+    if (error) throw error;
     return data || undefined;
   }
 
@@ -105,7 +97,30 @@ export class SupabaseStorage implements IStorage {
     const { error } = await supabase.from('thuoc').delete().eq('id', id);
     return !error;
   }
+
+  // --- BỔ SUNG: PATIENT & KHAM BENH METHODS ---
+  async createPatient(patient: InsertPatient): Promise<Patient> {
+    const { data, error } = await supabase.from('patients').insert(patient).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async getPatientById(id: string) {
+    const { data } = await supabase.from('patients').select('*').eq('id', id).single();
+    return data || undefined;
+  }
+
+  async createKhambenh(khambenh: InsertKhambenh): Promise<Khambenh> {
+    const { data, error } = await supabase.from('khambenh').insert(khambenh).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async createToathuoc(items: InsertToathuoc[]): Promise<Toathuoc[]> {
+    const { data, error } = await supabase.from('toathuoc').insert(items).select();
+    if (error) throw error;
+    return data || [];
+  }
 }
 
-// KHỞI TẠO DUY NHẤT STORAGE THỰC
 export const storage = new SupabaseStorage();
