@@ -25,14 +25,18 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Medicine } from "@shared/schema";
 
+// 1. Cập nhật Schema để nhận thêm Số lô và Hạn dùng
 const medicineSchema = z.object({
   ten_thuoc: z.string().min(1, "Tên thuốc không được để trống"),
   don_vi: z.string().min(1, "Đơn vị không được để trống"),
-  so_luong_ton: z.number().min(0, "Số lượng tồn phải >= 0").or(z.undefined()),
+  so_luong_ton: z.number().min(0, "Số lượng phải >= 0").or(z.undefined()),
   gia_nhap: z.number().min(0, "Giá nhập phải >= 0").or(z.undefined()),
   gia_ban: z.number().min(0, "Giá bán phải >= 0").or(z.undefined()),
   so_luong_dat_hang: z.number().min(0, "Số lượng đặt hàng phải >= 0").or(z.undefined()),
   duong_dung: z.string().min(1, "Đường dùng không được để trống"),
+  // Các trường mở rộng
+  so_lo: z.string().min(1, "Số lô không được để trống"),
+  han_su_dung: z.string().min(1, "Hạn sử dụng không được để trống"),
 });
 
 interface AddMedicineDialogProps {
@@ -51,16 +55,6 @@ export function AddMedicineDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Refs for keyboard navigation
-  const tenThuocRef = useRef<HTMLInputElement>(null);
-  const donViRef = useRef<HTMLInputElement>(null);
-  const soLuongTonRef = useRef<HTMLInputElement>(null);
-  const soLuongDatHangRef = useRef<HTMLInputElement>(null);
-  const giaNhapRef = useRef<HTMLInputElement>(null);
-  const giaBanRef = useRef<HTMLInputElement>(null);
-  const duongDungRef = useRef<HTMLInputElement>(null);
-  const saveButtonRef = useRef<HTMLButtonElement>(null);
-
   const form = useForm<z.infer<typeof medicineSchema>>({
     resolver: zodResolver(medicineSchema),
     defaultValues: {
@@ -71,12 +65,13 @@ export function AddMedicineDialog({
       gia_ban: undefined,
       so_luong_dat_hang: undefined,
       duong_dung: "",
+      so_lo: "",
+      han_su_dung: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: z.infer<typeof medicineSchema>) => {
-      // Handle undefined values by converting to 0 for API
       const processedData = {
         ...data,
         so_luong_ton: data.so_luong_ton ?? 0,
@@ -89,20 +84,9 @@ export function AddMedicineDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/medicines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/statistics"] });
-      toast({
-        title: "Thành công",
-        description: "Đã thêm thuốc mới thành công!",
-      });
+      toast({ title: "Thành công", description: "Đã nhập thuốc mới vào kho!" });
       onOpenChange(false);
       form.reset();
-    },
-    onError: () => {
-      toast({
-        title: "Lỗi",
-        description: "Có lỗi xảy ra khi thêm thuốc",
-        variant: "destructive",
-      });
     },
   });
 
@@ -113,21 +97,10 @@ export function AddMedicineDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/medicines"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/statistics"] });
-      toast({
-        title: "Thành công",
-        description: "Đã cập nhật thuốc thành công!",
-      });
+      toast({ title: "Thành công", description: "Đã cập nhật lô hàng mới cho thuốc cũ!" });
       onOpenChange(false);
       form.reset();
       setSelectedExistingMedicine(null);
-    },
-    onError: () => {
-      toast({
-        title: "Lỗi",
-        description: "Có lỗi xảy ra khi cập nhật thuốc",
-        variant: "destructive",
-      });
     },
   });
 
@@ -135,21 +108,15 @@ export function AddMedicineDialog({
     if (tab === "new") {
       createMutation.mutate(data);
     } else if (selectedExistingMedicine) {
-      const updateData: Partial<z.infer<typeof medicineSchema>> = {};
-      
-      // Only update fields that have changed
-      if (data.so_luong_ton && data.so_luong_ton > 0) {
-        updateData.so_luong_ton = selectedExistingMedicine.so_luong_ton + data.so_luong_ton;
-      }
-      if (data.gia_nhap && data.gia_nhap > 0) updateData.gia_nhap = data.gia_nhap;
-      if (data.gia_ban && data.gia_ban > 0) updateData.gia_ban = data.gia_ban;
-      if (data.so_luong_dat_hang && data.so_luong_dat_hang > 0) updateData.so_luong_dat_hang = data.so_luong_dat_hang;
-      if (data.duong_dung) updateData.duong_dung = data.duong_dung;
-
-      updateMutation.mutate({
-        id: selectedExistingMedicine.id,
-        updateData,
-      });
+      // Logic cộng dồn tồn kho và cập nhật Lô/Hạn mới cho thuốc cũ
+      const updateData: Partial<z.infer<typeof medicineSchema>> = {
+        so_luong_ton: (selectedExistingMedicine.so_luong_ton || 0) + (data.so_luong_ton || 0),
+        gia_nhap: data.gia_nhap,
+        gia_ban: data.gia_ban,
+        so_lo: data.so_lo,
+        han_su_dung: data.han_su_dung,
+      };
+      updateMutation.mutate({ id: selectedExistingMedicine.id, updateData });
     }
   };
 
@@ -160,144 +127,138 @@ export function AddMedicineDialog({
       form.setValue("ten_thuoc", medicine.ten_thuoc);
       form.setValue("don_vi", medicine.don_vi);
       form.setValue("duong_dung", medicine.duong_dung);
-    }
-  };
-
-  const handleTabChange = (newTab: string) => {
-    setTab(newTab);
-    form.reset();
-    setSelectedExistingMedicine(null);
-  };
-
-  // Handle Enter key navigation
-  const handleKeyDown = (e: React.KeyboardEvent, nextRef?: React.RefObject<HTMLInputElement | HTMLButtonElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (nextRef?.current) {
-        nextRef.current.focus();
-      } else {
-        // If no next ref, submit form
-        form.handleSubmit(onSubmit)();
-      }
+      form.setValue("gia_nhap", medicine.gia_nhap);
+      form.setValue("gia_ban", medicine.gia_ban);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nhập thông tin thuốc</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-blue-700">
+            {tab === "new" ? "Nhập thuốc mới vào hệ thống" : "Nhập thêm lô hàng cho thuốc cũ"}
+          </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={handleTabChange} className="mt-4">
+        <Tabs value={tab} onValueChange={(v) => { setTab(v); form.reset(); }} className="mt-2">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="new">Thuốc mới</TabsTrigger>
-            <TabsTrigger value="existing">Thuốc cũ</TabsTrigger>
+            <TabsTrigger value="new">Tạo mã thuốc mới</TabsTrigger>
+            <TabsTrigger value="existing">Thuốc đã có trong kho</TabsTrigger>
           </TabsList>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-4">
-              <TabsContent value="new" className="space-y-4 mt-0">
-                <FormField
-                  control={form.control}
-                  name="ten_thuoc"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tên thuốc *</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="Nhập tên thuốc" 
-                          {...field}
-                          ref={tenThuocRef}
-                          onKeyDown={(e) => handleKeyDown(e, donViRef)}
-                          autoFocus
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </TabsContent>
-
-              <TabsContent value="existing" className="space-y-4 mt-0">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tên thuốc (cũ)</label>
-                  <Select onValueChange={handleExistingMedicineSelect}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn thuốc có sẵn" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {existingMedicines.map((medicine) => (
-                        <SelectItem key={medicine.id} value={medicine.id}>
-                          {medicine.ten_thuoc}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </TabsContent>
-
-              <FormField
-                control={form.control}
-                name="don_vi"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Đơn vị *</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Viên, ml, gói..."
-                        {...field}
-                        ref={donViRef}
-                        onKeyDown={(e) => handleKeyDown(e, soLuongTonRef)}
-                        disabled={tab === "existing" && !!selectedExistingMedicine}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-6">
+              
+              {/* PHẦN 1: THÔNG TIN CƠ BẢN */}
+              <div className="bg-slate-50 p-4 rounded-lg space-y-4">
+                <h4 className="font-semibold text-sm text-slate-500 uppercase">Thông tin thuốc</h4>
+                {tab === "new" ? (
+                  <FormField
+                    control={form.control}
+                    name="ten_thuoc"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tên thuốc *</FormLabel>
+                        <FormControl><Input placeholder="Ví dụ: Hapacol 150mg" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    <FormLabel>Chọn thuốc từ danh mục *</FormLabel>
+                    <Select onValueChange={handleExistingMedicineSelect}>
+                      <SelectTrigger><SelectValue placeholder="Tìm tên thuốc..." /></SelectTrigger>
+                      <SelectContent>
+                        {existingMedicines.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>{m.ten_thuoc} ({m.don_vi})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
-              />
 
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="don_vi"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Đơn vị tính *</FormLabel>
+                        <FormControl><Input placeholder="Viên, Gói, Chai..." {...field} disabled={tab === "existing"} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="duong_dung"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Đường dùng *</FormLabel>
+                        <FormControl><Input placeholder="Uống, Tiêm..." {...field} disabled={tab === "existing"} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* PHẦN 2: LÔ HÀNG VÀ HẠN DÙNG (CỘT MỞ RỘNG) */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+                <h4 className="font-semibold text-sm text-blue-600 uppercase">Chi tiết lô hàng nhập</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="so_lo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-blue-700">Số lô (Batch No.) *</FormLabel>
+                        <FormControl><Input placeholder="Nhập số lô..." {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="han_su_dung"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-blue-700">Hạn sử dụng *</FormLabel>
+                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* PHẦN 3: SỐ LƯỢNG VÀ GIÁ */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
                   name="so_luong_ton"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        {tab === "existing" ? "Số lượng nhập thêm" : "Số lượng tồn"}
+                      <FormLabel className="font-bold text-red-600">
+                        {tab === "existing" ? "Số lượng nhập thêm" : "Số lượng tồn kho"}
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          placeholder=""
-                          {...field}
-                          ref={soLuongTonRef}
-                          onKeyDown={(e) => handleKeyDown(e, soLuongDatHangRef)}
-                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                          value={field.value ?? ""}
-                        />
+                        <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
                   name="so_luong_dat_hang"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Số lượng đặt hàng</FormLabel>
+                      <FormLabel>Ngưỡng cảnh báo hết hàng</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          placeholder=""
-                          {...field}
-                          ref={soLuongDatHangRef}
-                          onKeyDown={(e) => handleKeyDown(e, giaNhapRef)}
-                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                          value={field.value ?? ""}
-                        />
+                        <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -313,21 +274,12 @@ export function AddMedicineDialog({
                     <FormItem>
                       <FormLabel>Giá nhập (VNĐ)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          placeholder=""
-                          {...field}
-                          ref={giaNhapRef}
-                          onKeyDown={(e) => handleKeyDown(e, giaBanRef)}
-                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                          value={field.value ?? ""}
-                        />
+                        <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <FormField
                   control={form.control}
                   name="gia_ban"
@@ -335,15 +287,7 @@ export function AddMedicineDialog({
                     <FormItem>
                       <FormLabel>Giá bán (VNĐ)</FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          placeholder=""
-                          {...field}
-                          ref={giaBanRef}
-                          onKeyDown={(e) => handleKeyDown(e, duongDungRef)}
-                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                          value={field.value ?? ""}
-                        />
+                        <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -351,41 +295,10 @@ export function AddMedicineDialog({
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="duong_dung"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Đường dùng *</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Uống, tiêm, bôi ngoài da..."
-                        {...field}
-                        ref={duongDungRef}
-                        onKeyDown={(e) => handleKeyDown(e, saveButtonRef)}
-                        disabled={tab === "existing" && !!selectedExistingMedicine}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  Hủy
-                </Button>
-                <Button
-                  type="submit"
-                  ref={saveButtonRef}
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  {createMutation.isPending || updateMutation.isPending ? "Đang lưu..." : "Lưu thuốc"}
+              <div className="flex justify-end space-x-3 pt-6 border-t">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                  {createMutation.isPending || updateMutation.isPending ? "Đang xử lý..." : "Xác nhận nhập kho"}
                 </Button>
               </div>
             </form>
