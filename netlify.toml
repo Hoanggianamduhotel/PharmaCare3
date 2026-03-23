@@ -4,23 +4,19 @@
   functions = "netlify/functions"
 
 # API redirects to Netlify Functions
+# Ưu tiên các route cụ thể trước
+[[redirects]]
+  from = "/api/medicines/low-stock"
+  to = "/.netlify/functions/medicines-low-stock"
+  status = 200
+
 [[redirects]]
   from = "/api/medicines/*"
   to = "/.netlify/functions/medicines"
   status = 200
 
 [[redirects]]
-  from = "/api/medicines"
-  to = "/.netlify/functions/medicines"
-  status = 200
-
-[[redirects]]
   from = "/api/thuoc/*"
-  to = "/.netlify/functions/thuoc"
-  status = 200
-
-[[redirects]]
-  from = "/api/thuoc"
   to = "/.netlify/functions/thuoc"
   status = 200
 
@@ -39,16 +35,14 @@
   to = "/.netlify/functions/patients"
   status = 200
 
-[[redirects]]
-  from = "/api/medicines/low-stock"
-  to = "/.netlify/functions/medicines-low-stock"
-  status = 200
-
-# SPA fallback for client-side routing
+# SPA fallback cho React/Wouter/React Router
+# Phải để ở cuối cùng để không đè lên API
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
 [build.environment]
-  NODE_ENV = "production"
+  # Ép Netlify dùng Node 20 để ổn định hơn
+  NODE_VERSION = "20"
+  # Xóa NODE_ENV=production ở đây để tránh lỗi thiếu Vite khi build
