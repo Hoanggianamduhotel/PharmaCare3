@@ -1,15 +1,28 @@
 [build]
-  # Sửa từ "dist" thành "dist/public" để Netlify thấy file index.html của React
-  publish = "dist/public"
+  # Thư mục chứa file index.html sau khi build (Vite thường xuất ra dist)
+  # Nếu build của bạn ra dist/public thì giữ nguyên, nếu chỉ ra dist thì sửa lại
+  publish = "dist" 
   command = "npm run build"
+  # Thư mục chứa các file .ts của Netlify Functions
   functions = "netlify/functions"
 
-# --- API REDIRECTS TO NETLIFY FUNCTIONS ---
-# Lưu ý: Đảm bảo các file trong netlify/functions/ có tên khớp với phần 'to'
+[build.environment]
+  NODE_VERSION = "20"
 
+# --- 1. REDIRECTS CHO API (NETLIFY FUNCTIONS) ---
+# Lưu ý: Các quy tắc cụ thể phải nằm TRÊN các quy tắc chung (*)
+
+# API lấy thuốc sắp hết hàng
 [[redirects]]
   from = "/api/medicines/low-stock"
   to = "/.netlify/functions/medicines-low-stock"
+  status = 200
+
+# API chung cho medicines (GET, POST, PATCH, DELETE)
+# Quy tắc này xử lý cả /api/medicines và /api/medicines/:id
+[[redirects]]
+  from = "/api/medicines"
+  to = "/.netlify/functions/medicines"
   status = 200
 
 [[redirects]]
@@ -17,33 +30,37 @@
   to = "/.netlify/functions/medicines"
   status = 200
 
+# API cho thực thể Thuốc (Tiếng Việt)
+[[redirects]]
+  from = "/api/thuoc"
+  to = "/.netlify/functions/thuoc"
+  status = 200
+
 [[redirects]]
   from = "/api/thuoc/*"
   to = "/.netlify/functions/thuoc"
   status = 200
 
+# Các API bổ trợ khác
 [[redirects]]
   from = "/api/statistics"
   to = "/.netlify/functions/statistics"
   status = 200
 
 [[redirects]]
-  from = "/api/prescriptions"
+  from = "/api/prescriptions/*"
   to = "/.netlify/functions/prescriptions"
   status = 200
 
 [[redirects]]
-  from = "/api/patients"
+  from = "/api/patients/*"
   to = "/.netlify/functions/patients"
   status = 200
 
-# --- SPA FALLBACK ---
-# Giúp các route của React (Wouter) không bị 404 khi refresh trang
+# --- 2. SPA FALLBACK ---
+# Quy tắc này cực kỳ quan trọng cho React Apps sử dụng Client-side routing (Wouter/React Router)
+# Nó giúp khi bạn F5 trình duyệt ở trang /inventory thì không bị lỗi 404
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-[build.environment]
-  NODE_VERSION = "20"
-  # Không để NODE_ENV = "production" ở đây để đảm bảo cài đủ devDependencies lúc build
