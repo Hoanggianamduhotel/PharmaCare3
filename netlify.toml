@@ -1,10 +1,12 @@
 [build]
-  publish = "dist"
+  # Sửa từ "dist" thành "dist/public" để Netlify thấy file index.html của React
+  publish = "dist/public"
   command = "npm run build"
   functions = "netlify/functions"
 
-# API redirects to Netlify Functions
-# Ưu tiên các route cụ thể trước
+# --- API REDIRECTS TO NETLIFY FUNCTIONS ---
+# Lưu ý: Đảm bảo các file trong netlify/functions/ có tên khớp với phần 'to'
+
 [[redirects]]
   from = "/api/medicines/low-stock"
   to = "/.netlify/functions/medicines-low-stock"
@@ -35,14 +37,13 @@
   to = "/.netlify/functions/patients"
   status = 200
 
-# SPA fallback cho React/Wouter/React Router
-# Phải để ở cuối cùng để không đè lên API
+# --- SPA FALLBACK ---
+# Giúp các route của React (Wouter) không bị 404 khi refresh trang
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
 [build.environment]
-  # Ép Netlify dùng Node 20 để ổn định hơn
   NODE_VERSION = "20"
-  # Xóa NODE_ENV=production ở đây để tránh lỗi thiếu Vite khi build
+  # Không để NODE_ENV = "production" ở đây để đảm bảo cài đủ devDependencies lúc build
