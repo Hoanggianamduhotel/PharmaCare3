@@ -2,145 +2,92 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
-  insertMedicineSchema, 
-  insertPrescriptionSchema, 
-  insertPatientSchema,
   insertThuocSchema,
   insertKhambenhSchema,
-  insertToathuocSchema
+  insertToathuocSchema,
+  insertUserSchema
 } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Thuoc (Vietnamese) routes  
-  app.get("/api/thuoc", async (req, res) => {
+  
+  // --- THUOC (VIETNAMESE) ROUTES ---
+  
+  // Lấy toàn bộ danh mục thuốc
+  app.get("/api/thuoc", async (_req, res) => {
     try {
-      const thuoc = await storage.getAllThuoc();
-      res.json(thuoc);
+      const danhSachThuoc = await storage.getAllThuoc();
+      res.json(danhSachThuoc);
     } catch (error) {
       res.status(500).json({ message: "Lỗi khi lấy danh sách thuốc" });
     }
   });
 
+  // Tìm kiếm thuốc theo tên
   app.get("/api/thuoc/search", async (req, res) => {
     try {
       const { q = "" } = req.query;
-      const thuoc = await storage.searchThuocByName(q as string);
-      res.json(thuoc);
+      const ketQua = await storage.searchThuocByName(q as string);
+      res.json(ketQua);
     } catch (error) {
       res.status(500).json({ message: "Lỗi khi tìm kiếm thuốc" });
     }
   });
 
+  // Chi tiết 1 loại thuốc
   app.get("/api/thuoc/:id", async (req, res) => {
     try {
       const thuoc = await storage.getThuocById(req.params.id);
-      if (!thuoc) {
-        return res.status(404).json({ message: "Không tìm thấy thuốc" });
-      }
+      if (!thuoc) return res.status(404).json({ message: "Không tìm thấy thuốc" });
       res.json(thuoc);
     } catch (error) {
       res.status(500).json({ message: "Lỗi khi lấy thông tin thuốc" });
     }
   });
 
-  app.patch("/api/thuoc/:id/stock", async (req, res) => {
-    try {
-      const { so_luong_ton } = req.body;
-      await storage.updateThuocStock(req.params.id, so_luong_ton);
-      res.json({ message: "Cập nhật tồn kho thành công" });
-    } catch (error) {
-      res.status(500).json({ message: "Lỗi khi cập nhật tồn kho" });
-    }
-  });
+  // --- MEDICINES ROUTES (Cập nhật để dùng bảng 'thuoc' đồng nhất) ---
 
-  // Legacy Medicine routes for compatibility - now using thuoc table data
-  app.get("/api/medicines", async (req, res) => {
+  // Route lấy thuốc cũ nhưng dữ liệu lấy từ bảng 'thuoc'
+  app.get("/api/medicines", async (_req, res) => {
     try {
       const thuoc = await storage.getAllThuoc();
-      // Map thuoc to medicine format with actual data from thuoc table
+      // Map về định dạng cũ nếu Frontend yêu cầu, nhưng giữ đủ data
       const medicines = thuoc.map(t => ({
-        id: t.id,
-        ten_thuoc: t.ten_thuoc,
-        don_vi: t.don_vi || "",
-        so_luong_ton: parseInt(t.so_luong_ton?.toString() || "0"),
-        so_luong_dat_hang: parseInt(t.so_luong_dat_hang?.toString() || "0"),
-        gia_nhap: parseInt(t.gia_nhap?.toString() || "0"),
-        gia_ban: parseInt(t.gia_ban?.toString() || "0"),
-        duong_dung: t.duong_dung || "Uống",
-        created_at: t.created_at || new Date()
+        ...t,
+        so_luong_ton: Number(t.so_luong_ton || 0),
+        gia_nhap: Number(t.gia_nhap || 0),
+        gia_ban: Number(t.gia_ban || 0),
       }));
       res.json(medicines);
     } catch (error) {
-      res.status(500).json({ message: "Lỗi khi lấy danh sách thuốc" });
+      res.status(500).json({ message: "Lỗi hệ thống" });
     }
   });
 
-  // API endpoint để lấy thuốc sắp hết hàng cho xuất Excel (phải đặt trước :id route)
-  app.get("/api/medicines/low-stock", async (req, res) => {
-    try {
-      const thuoc = await storage.getAllThuoc();
-      // Lọc thuốc sắp hết: tồn kho <= đặt hàng
-      const lowStockThuoc = thuoc
-        .filter(t => {
-          const tonKho = Number(t.so_luong_ton || 0);
-          const datHang = Number(t.so_luong_dat_hang || 0);
-          return tonKho <= datHang; // Logic giống như trong MedicineInventory.tsx
-        })
-        .map(t => ({
-          id: t.id,
-          ten: t.ten_thuoc,
-          donvi: t.don_vi || "Viên",
-          tonkho: Number(t.so_luong_ton || 0),
-          gianhap: Number(t.gia_nhap || 0),
-          giaban: Number(t.gia_ban || 0),
-          dathang: Number(t.so_luong_dat_hang || 0),
-          duongdung: t.duong_dung || "Uống",
-          hansudung: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : "N/A",
-          nhasanxuat: t.phan_loai || "Chưa cập nhật"
-        }));
-      
-      res.json(lowStockThuoc);
-    } catch (error) {
-      console.error("Error fetching low stock medicines:", error);
-      res.status(500).json({ message: "Lỗi khi lấy danh sách thuốc sắp hết" });
-    }
-  });
-
-  app.get("/api/medicines/:id", async (req, res) => {
-    try {
-      const medicine = await storage.getMedicine(req.params.id);
-      if (!medicine) {
-        return res.status(404).json({ message: "Không tìm thấy thuốc" });
-      }
-      res.json(medicine);
-    } catch (error) {
-      res.status(500).json({ message: "Lỗi khi lấy thông tin thuốc" });
-    }
-  });
-
+  // POST: Tạo mới thuốc (Đã sửa để nhận so_lo, han_dung)
   app.post("/api/medicines", async (req, res) => {
     try {
-      const medicineData = insertMedicineSchema.parse(req.body);
-      const medicine = await storage.createMedicine(medicineData);
-      res.status(201).json(medicine);
+      // SỬA TẠI ĐÂY: Dùng insertThuocSchema thay vì insertMedicineSchema cũ
+      const data = insertThuocSchema.parse(req.body);
+      const newThuoc = await storage.createThuoc(data);
+      res.status(201).json(newThuoc);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Dữ liệu không hợp lệ", errors: error.errors });
       }
-      console.error("Error creating medicine:", error);
-      res.status(500).json({ message: "Lỗi khi thêm thuốc" });
+      res.status(500).json({ message: "Lỗi khi tạo thuốc mới" });
     }
   });
 
+  // PATCH: Cập nhật lô hàng/tồn kho (Đã sửa để nhận so_lo, han_dung)
   app.patch("/api/medicines/:id", async (req, res) => {
     try {
-      const updateData = insertMedicineSchema.partial().parse(req.body);
-      const medicine = await storage.updateMedicine(req.params.id, updateData);
-      if (!medicine) {
-        return res.status(404).json({ message: "Không tìm thấy thuốc" });
-      }
-      res.json(medicine);
+      // SỬA TẠI ĐÂY: Cho phép update từng phần của bảng Thuoc
+      const updateData = insertThuocSchema.partial().parse(req.body);
+      const updated = await storage.updateThuoc(req.params.id, updateData);
+      
+      if (!updated) return res.status(404).json({ message: "Không tìm thấy thuốc" });
+      res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Dữ liệu không hợp lệ", errors: error.errors });
@@ -149,54 +96,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DELETE: Xóa thuốc
   app.delete("/api/medicines/:id", async (req, res) => {
     try {
-      const success = await storage.deleteMedicine(req.params.id);
-      if (!success) {
-        return res.status(404).json({ message: "Không tìm thấy thuốc" });
-      }
-      res.json({ message: "Đã xóa thuốc thành công" });
+      const success = await storage.deleteThuoc(req.params.id);
+      if (!success) return res.status(404).json({ message: "Không tìm thấy thuốc" });
+      res.json({ message: "Đã xóa thành công" });
     } catch (error) {
-      res.status(500).json({ message: "Lỗi khi xóa thuốc" });
+      res.status(500).json({ message: "Lỗi khi xóa" });
     }
   });
 
-  // Prescription routes (simplified placeholder)
-  app.get("/api/prescriptions", async (req, res) => {
-    try {
-      res.json([]); // Return empty array for now
-    } catch (error) {
-      res.status(500).json({ message: "Lỗi khi lấy danh sách toa thuốc" });
-    }
-  });
+  // --- CÁC ROUTE KHÁC (BÁO CÁO & THỐNG KÊ) ---
 
-  // Patient routes (simplified placeholder)
-  app.get("/api/patients", async (req, res) => {
-    try {
-      res.json([]); // Return empty array for now
-    } catch (error) {
-      res.status(500).json({ message: "Lỗi khi lấy danh sách bệnh nhân" });
-    }
-  });
-
-  // Statistics route
-  app.get("/api/statistics", async (req, res) => {
+  app.get("/api/medicines/low-stock", async (_req, res) => {
     try {
       const thuoc = await storage.getAllThuoc();
-      
-      const totalMedicines = thuoc.length;
-      const lowStockMedicines = thuoc.filter(t => Number(t.so_luong_ton || 0) <= Number(t.so_luong_dat_hang || 0)).length;
-      const pendingPrescriptions = 0; // No prescriptions in simplified schema yet
-      const totalValue = 0; // No pricing in simplified schema yet
-      
+      const lowStock = thuoc
+        .filter(t => Number(t.so_luong_ton || 0) <= Number(t.so_luong_dat_hang || 0))
+        .map(t => ({
+          id: t.id,
+          ten: t.ten_thuoc,
+          donvi: t.don_vi,
+          tonkho: Number(t.so_luong_ton || 0),
+          gianhap: Number(t.gia_nhap || 0),
+          giaban: Number(t.gia_ban || 0),
+          dathang: Number(t.so_luong_dat_hang || 0),
+          duongdung: t.duong_dung,
+          hansudung: t.han_dung || "N/A", // Lấy trường han_dung mới
+          solo: t.so_lo || "N/A"
+        }));
+      res.json(lowStock);
+    } catch (error) {
+      res.status(500).json({ message: "Lỗi lấy dữ liệu cảnh báo" });
+    }
+  });
+
+  app.get("/api/statistics", async (_req, res) => {
+    try {
+      const thuoc = await storage.getAllThuoc();
       res.json({
-        totalMedicines,
-        lowStockMedicines,
-        pendingPrescriptions,
-        totalValue
+        totalMedicines: thuoc.length,
+        lowStockMedicines: thuoc.filter(t => Number(t.so_luong_ton || 0) <= Number(t.so_luong_dat_hang || 0)).length,
+        pendingPrescriptions: 0,
+        totalValue: thuoc.reduce((sum, t) => sum + (Number(t.gia_ban || 0) * Number(t.so_luong_ton || 0)), 0)
       });
     } catch (error) {
-      res.status(500).json({ message: "Lỗi khi lấy thống kê" });
+      res.status(500).json({ message: "Lỗi lấy thống kê" });
     }
   });
 
