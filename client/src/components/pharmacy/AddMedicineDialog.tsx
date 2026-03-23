@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,20 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Thuoc } from "@shared/schema";
-
-// 1. Schema chuẩn khớp với SQL Database
-const medicineSchema = z.object({
-  ten_thuoc: z.string().min(1, "Tên thuốc không được để trống"),
-  don_vi: z.string().min(1, "Đơn vị không được để trống"),
-  so_luong_ton: z.number().min(0, "Số lượng phải >= 0").or(z.undefined()),
-  gia_nhap: z.number().min(0, "Giá nhập phải >= 0").or(z.undefined()),
-  gia_ban: z.number().min(0, "Giá bán phải >= 0").or(z.undefined()),
-  so_luong_dat_hang: z.number().min(0, "Ngưỡng báo động phải >= 0").optional().default(0),
-  duong_dung: z.string().min(1, "Đường dùng không được để trống"),
-  so_lo: z.string().min(1, "Số lô không được để trống"),
-  han_dung: z.string().min(1, "Hạn sử dụng không được để trống"), // Khớp han_dung trong SQL
-});
+import { insertThuocSchema, type Thuoc, type InsertThuoc } from "@shared/schema";
 
 interface AddMedicineDialogProps {
   open: boolean;
@@ -54,78 +41,85 @@ export function AddMedicineDialog({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const form = useForm<z.infer<typeof medicineSchema>>({
-    resolver: zodResolver(medicineSchema),
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+
+  const form = useForm<InsertThuoc>({
+    resolver: zodResolver(insertThuocSchema),
     defaultValues: {
       ten_thuoc: "",
       don_vi: "",
-      so_luong_ton: undefined,
-      gia_nhap: undefined,
-      gia_ban: undefined,
+      so_luong_ton: "0",
+      gia_nhap: "0",
+      gia_ban: "0",
       so_luong_dat_hang: 0,
       duong_dung: "",
       so_lo: "",
       han_dung: "",
+      vat: "5",
     },
   });
 
-  // Mutation tạo thuốc mới
   const createMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof medicineSchema>) => {
+    mutationFn: async (data: InsertThuoc) => {
       const response = await apiRequest("POST", "/api/thuoc", data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/thuoc"] });
-      toast({ title: "Thành công", description: "Đã thêm thuốc mới vào danh mục!" });
+      toast({ title: "Thành công", description: "Đã thêm thuốc mới!" });
       onOpenChange(false);
       form.reset();
     },
   });
 
-  // Mutation cập nhật lô hàng (nhập thêm)
   const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; updateData: Partial<Thuoc> }) => {
-      const response = await apiRequest("PATCH", `/api/thuoc/${payload.id}`, payload.updateData);
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InsertThuoc> }) => {
+      const response = await apiRequest("PATCH", `/api/thuoc/${id}`, data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/thuoc"] });
-      toast({ title: "Thành công", description: "Đã nhập thêm lô hàng thành công!" });
+      toast({ title: "Thành công", description: "Đã cập nhật kho hàng!" });
       onOpenChange(false);
       form.reset();
-      setSelectedExistingMedicine(null);
     },
   });
 
-  const onSubmit = (data: z.infer<typeof medicineSchema>) => {
+  const onSubmit = (values: InsertThuoc) => {
     if (tab === "new") {
-      createMutation.mutate(data);
+      createMutation.mutate(values);
     } else if (selectedExistingMedicine) {
-      // Logic cộng dồn số lượng cho thuốc đã có
-      const currentStock = Number(selectedExistingMedicine.so_luong_ton) || 0;
-      const newImport = data.so_luong_ton || 0;
+      // Logic cộng dồn tồn kho cho thuốc cũ
+      const currentStock = parseFloat(selectedExistingMedicine.so_luong_ton || "0");
+      const addedStock = parseFloat(values.so_luong_ton || "0");
       
       const updateData = {
-        so_luong_ton: (currentStock + newImport).toString(),
-        gia_nhap: data.gia_nhap?.toString(),
-        gia_ban: data.gia_ban?.toString(),
-        so_lo: data.so_lo,
-        han_dung: data.han_dung,
+        ...values,
+        so_luong_ton: (currentStock + addedStock).toString(),
       };
-      updateMutation.mutate({ id: selectedExistingMedicine.id, updateData });
+      
+      updateMutation.mutate({
+        id: selectedExistingMedicine.id,
+        data: updateData,
+      });
     }
   };
 
   const handleExistingMedicineSelect = (id: string) => {
-    const m = existingMedicines.find((item) => item.id === id);
-    if (m) {
-      setSelectedExistingMedicine(m);
-      form.setValue("ten_thuoc", m.ten_thuoc);
-      form.setValue("don_vi", m.don_vi || "");
-      form.setValue("duong_dung", m.duong_dung || "");
-      form.setValue("gia_nhap", Number(m.gia_nhap) || 0);
-      form.setValue("gia_ban", Number(m.gia_ban) || 0);
+    const med = existingMedicines.find((m) => m.id === id);
+    if (med) {
+      setSelectedExistingMedicine(med);
+      form.reset({
+        ten_thuoc: med.ten_thuoc,
+        don_vi: med.don_vi || "",
+        duong_dung: med.duong_dung || "",
+        gia_nhap: med.gia_nhap || "0",
+        gia_ban: med.gia_ban || "0",
+        vat: med.vat || "5",
+        so_luong_ton: "0", // Reset về 0 để nhập số lượng mới
+        so_lo: med.so_lo || "",
+        han_dung: med.han_dung || "",
+      });
     }
   };
 
@@ -133,172 +127,149 @@ export function AddMedicineDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-blue-800">
-            {tab === "new" ? "Nhập thuốc mới" : "Nhập lô hàng bổ sung"}
+          <DialogTitle className="text-xl font-bold text-blue-800">
+            {tab === "new" ? "Thêm thuốc mới vào danh mục" : "Nhập thêm thuốc vào kho"}
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={(v) => { setTab(v); form.reset(); }} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="new">Tạo mã thuốc mới</TabsTrigger>
+        <Tabs value={tab} onValueChange={(v) => { setTab(v); form.reset(); }} className="mt-2">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="new">Thuốc mới hoàn toàn</TabsTrigger>
             <TabsTrigger value="existing">Thuốc đã có trong kho</TabsTrigger>
           </TabsList>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              
-              {/* PHẦN 1: THÔNG TIN GỐC */}
-              <div className="p-4 border rounded-xl bg-slate-50/50 space-y-4">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Thông tin định danh</h3>
-                {tab === "new" ? (
-                  <FormField
-                    control={form.control}
-                    name="ten_thuoc"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tên thuốc thương mại *</FormLabel>
-                        <FormControl><Input placeholder="Ví dụ: Augmentin 625mg" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    <FormLabel>Chọn thuốc từ danh mục *</FormLabel>
-                    <Select onValueChange={handleExistingMedicineSelect}>
-                      <SelectTrigger className="bg-white"><SelectValue placeholder="Gõ để tìm thuốc..." /></SelectTrigger>
-                      <SelectContent>
-                        {existingMedicines.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>{m.ten_thuoc} ({m.don_vi})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="don_vi"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Đơn vị tính</FormLabel>
-                        <FormControl><Input {...field} disabled={tab === "existing"} placeholder="Viên, Chai..." /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="duong_dung"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Đường dùng</FormLabel>
-                        <FormControl><Input {...field} disabled={tab === "existing"} placeholder="Uống, Tiêm..." /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {tab === "existing" && (
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-4">
+                  <FormLabel className="text-blue-800 font-semibold">Chọn thuốc cần nhập thêm</FormLabel>
+                  <Select onValueChange={handleExistingMedicineSelect}>
+                    <SelectTrigger className="bg-white mt-1">
+                      <SelectValue placeholder="Gõ tên để tìm thuốc cũ..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingMedicines.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.ten_thuoc} ({m.don_vi})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="ten_thuoc"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tên thuốc *</FormLabel>
+                      <FormControl>
+                        <Input {...field} disabled={tab === "existing"} className="font-medium" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="so_lo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Số lô</FormLabel>
+                      <FormControl><Input {...field} placeholder="VD: L0123" /></FormControl>
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              {/* PHẦN 2: CHI TIẾT LÔ HÀNG */}
-              <div className="p-4 border border-blue-100 rounded-xl bg-blue-50/30 space-y-4">
-                <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wider">Chi tiết lô nhập hàng</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="so_lo"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Số lô (Batch No.) *</FormLabel>
-                        <FormControl><Input className="bg-white" placeholder="Nhập số lô..." {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="han_dung"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Hạn sử dụng *</FormLabel>
-                        <FormControl><Input className="bg-white" type="date" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="so_luong_ton"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{tab === "existing" ? "Số lượng nhập thêm" : "Số lượng tồn đầu"}</FormLabel>
+                      <FormControl><Input type="number" {...field} className="bg-yellow-50 font-bold text-lg" /></FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="don_vi"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Đơn vị</FormLabel>
+                      <FormControl><Input {...field} disabled={tab === "existing"} /></FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="vat"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>VAT (%)</FormLabel>
+                      <FormControl><Input type="number" {...field} /></FormControl>
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              {/* PHẦN 3: SỐ LƯỢNG & GIÁ */}
-              <div className="grid grid-cols-2 gap-6 p-4 border rounded-xl bg-white">
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="so_luong_ton"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-red-600 font-bold">Số lượng nhập kho *</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="so_luong_dat_hang"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ngưỡng báo hết hàng</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="space-y-4 border-l pl-6">
-                  <FormField
-                    control={form.control}
-                    name="gia_nhap"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Giá nhập (đơn vị)</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="gia_ban"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Giá bán niêm yết</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value))} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="gia_nhap"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Giá nhập (đơn vị)</FormLabel>
+                      <FormControl><Input type="number" {...field} /></FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="gia_ban"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Giá bán (niêm yết)</FormLabel>
+                      <FormControl><Input type="number" {...field} /></FormControl>
+                    </FormItem>
+                  )}
+                />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="han_dung"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hạn sử dụng *</FormLabel>
+                      <FormControl><Input type="date" {...field} /></FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="duong_dung"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Đường dùng</FormLabel>
+                      <FormControl><Input {...field} placeholder="Uống / Tiêm..." /></FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-6 border-t">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
                 <Button 
                   type="submit" 
+                  ref={saveButtonRef}
                   className="bg-blue-700 hover:bg-blue-800 px-8"
                   disabled={createMutation.isPending || updateMutation.isPending}
                 >
-                  {createMutation.isPending || updateMutation.isPending ? "Đang lưu..." : "Xác nhận nhập kho"}
+                  {createMutation.isPending || updateMutation.isPending ? "Đang xử lý..." : "Xác nhận lưu kho"}
                 </Button>
               </div>
             </form>
