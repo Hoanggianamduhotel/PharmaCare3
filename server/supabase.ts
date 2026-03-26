@@ -1,19 +1,21 @@
-import { createClient } from "@supabase/supabase-js";
+/* ============================================================
+   QUẢN LÝ CẤU HÌNH SUPABASE (REST API)
+   ============================================================ */
 
-// Kiểm tra linh hoạt cho cả môi trường Local (Vite) và Production (Node/Render)
-const supabaseUrl = 
-  process.env.SUPABASE_URL || 
-  process.env.VITE_SUPABASE_URL || 
-  "";
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
-const supabaseKey = 
-  process.env.SUPABASE_ANON_KEY || 
-  process.env.VITE_SUPABASE_ANON_KEY || 
-  "";
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("❌ CRITICAL ERROR: Supabase credentials are missing!");
-  console.log("Check your Environment Variables on Render/Netlify.");
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error("❌ Thiếu cấu hình Supabase trong file .env");
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabaseHeaders = {
+  "Content-Type": "application/json",
+  "apikey": SUPABASE_ANON_KEY,
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+};
+
+// Helper để tạo URL nhanh
+export const getSupabaseUrl = (table: string, params: string = "") => {
+  return `${SUPABASE_URL}/rest/v1/${table}${params}`;
+};
