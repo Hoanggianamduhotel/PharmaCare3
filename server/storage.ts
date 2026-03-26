@@ -14,40 +14,42 @@ import {
 
 export interface IStorage {
   // User
-  getUser(id: string): Promise<User | undefined>;
+  getUser(id: string | number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
   // Thuốc
   getAllThuoc(): Promise<Thuoc[]>;
-  getThuocById(id: string): Promise<Thuoc | undefined>;
+  getThuocById(id: string | number): Promise<Thuoc | undefined>;
   searchThuocByName(searchTerm: string): Promise<Thuoc[]>;
   createThuoc(thuoc: InsertThuoc): Promise<Thuoc>;
-  updateThuoc(id: string, thuoc: Partial<InsertThuoc>): Promise<Thuoc | undefined>;
-  deleteThuoc(id: string): Promise<boolean>;
+  updateThuoc(id: string | number, thuoc: Partial<InsertThuoc>): Promise<Thuoc | undefined>;
+  deleteThuoc(id: string | number): Promise<boolean>;
 
-  // Bệnh nhân & Khám bệnh (Bổ sung để chạy được tính năng đơn thuốc)
+  // Bệnh nhân & Khám bệnh
   createPatient(patient: InsertPatient): Promise<Patient>;
-  getPatientById(id: string): Promise<Patient | undefined>;
+  getPatientById(id: string | number): Promise<Patient | undefined>;
   createKhambenh(data: InsertKhambenh): Promise<Khambenh>;
   createToathuoc(data: InsertToathuoc[]): Promise<Toathuoc[]>;
 }
 
 export class SupabaseStorage implements IStorage {
   // --- USER METHODS ---
-  async getUser(id: string) {
-    const { data } = await supabase.from('users').select('*').eq('id', id).single();
-    return data || undefined;
+  async getUser(id: string | number) {
+    const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return data;
   }
 
   async getUserByUsername(username: string) {
-    const { data } = await supabase.from('users').select('*').eq('username', username).single();
+    const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
+    if (error) return undefined;
     return data || undefined;
   }
 
   async createUser(user: InsertUser) {
     const { data, error } = await supabase.from('users').insert(user).select().single();
-    if (error) throw error;
+    if (error) throw new Error(`Lỗi tạo user: ${error.message}`);
     return data;
   }
 
@@ -56,14 +58,19 @@ export class SupabaseStorage implements IStorage {
     const { data, error } = await supabase
       .from('thuoc')
       .select('*')
-      .order('created_at', { ascending: false }); // Ưu tiên thuốc mới nhập lên đầu
-    if (error) return [];
+      .order('ten_thuoc', { ascending: true }); // Sắp xếp theo tên cho dễ nhìn
+    
+    if (error) {
+      console.error("Lỗi lấy danh sách thuốc:", error.message);
+      return [];
+    }
     return data || [];
   }
 
-  async getThuocById(id: string) {
-    const { data } = await supabase.from('thuoc').select('*').eq('id', id).single();
-    return data || undefined;
+  async getThuocById(id: string | number) {
+    const { data, error } = await supabase.from('thuoc').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return data;
   }
 
   async searchThuocByName(searchTerm: string) {
@@ -72,42 +79,52 @@ export class SupabaseStorage implements IStorage {
       .select('*')
       .ilike('ten_thuoc', `%${searchTerm}%`)
       .limit(20);
-    if (error) throw error;
+    
+    if (error) return [];
     return data || [];
   }
 
   async createThuoc(thuoc: InsertThuoc): Promise<Thuoc> {
     const { data, error } = await supabase.from('thuoc').insert(thuoc).select().single();
-    if (error) throw error;
+    if (error) throw new Error(`Lỗi tạo thuốc: ${error.message}`);
     return data;
   }
 
-  async updateThuoc(id: string, updateData: Partial<InsertThuoc>): Promise<Thuoc | undefined> {
+  async updateThuoc(id: string | number, updateData: Partial<InsertThuoc>): Promise<Thuoc | undefined> {
     const { data, error } = await supabase
       .from('thuoc')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
-    if (error) throw error;
-    return data || undefined;
+    
+    if (error) {
+      console.error(`Lỗi cập nhật thuốc ${id}:`, error.message);
+      return undefined;
+    }
+    return data;
   }
 
-  async deleteThuoc(id: string): Promise<boolean> {
+  async deleteThuoc(id: string | number): Promise<boolean> {
     const { error } = await supabase.from('thuoc').delete().eq('id', id);
-    return !error;
+    if (error) {
+      console.error(`Lỗi xóa thuốc ${id}:`, error.message);
+      return false;
+    }
+    return true;
   }
 
-  // --- BỔ SUNG: PATIENT & KHAM BENH METHODS ---
+  // --- PATIENT & KHAM BENH ---
   async createPatient(patient: InsertPatient): Promise<Patient> {
     const { data, error } = await supabase.from('patients').insert(patient).select().single();
     if (error) throw error;
     return data;
   }
 
-  async getPatientById(id: string) {
-    const { data } = await supabase.from('patients').select('*').eq('id', id).single();
-    return data || undefined;
+  async getPatientById(id: string | number) {
+    const { data, error } = await supabase.from('patients').select('*').eq('id', id).single();
+    if (error) return undefined;
+    return data;
   }
 
   async createKhambenh(khambenh: InsertKhambenh): Promise<Khambenh> {
